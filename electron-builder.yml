@@ -1,0 +1,23 @@
+appId: com.maegdonaldeu.mdeditor
+productName: MdEditor
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+fileAssociations:
+  - ext: [md, markdown]
+    name: Markdown
+    role: Editor
+# Mac: .app 하나를 zip으로 (풀면 MdEditor.app 하나, 더블클릭으로 실행)
+mac:
+  target: zip
+  category: public.app-category.productivity
+# Windows: 설치 없이 실행되는 .exe 파일 하나
+win:
+  target: portable
+portable:
+  artifactName: ${productName}-${version}-windows.exe
+linux:
+  target: AppImage

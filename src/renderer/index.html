@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http: mdfile:; font-src 'self' data:; connect-src 'self' mdfile:"
+    />
+    <title>MdEditor</title>
+  </head>
+  <body>
+    <div id="tabbar">
+      <div id="tabs"></div>
+      <button id="new-tab" title="새 탭">+</button>
+    </div>
+    <div id="main">
+      <div id="editor-pane">
+        <div id="editor"></div>
+        <button id="toggle-preview" title="PDF 미리보기 열기 (⌥⌘P)">&gt;</button>
+      </div>
+      <div id="divider" title="끌어서 폭 조절"></div>
+      <div id="preview"></div>
+    </div>
+    <div id="status"></div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

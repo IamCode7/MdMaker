@@ -1,0 +1,50 @@
+{
+  "name": "mdeditor",
+  "productName": "MdEditor",
+  "version": "0.1.0",
+  "description": "Markdown editor",
+  "main": "./out/main/index.js",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "e2e": "electron-vite build && playwright test",
+    "dist:mac": "electron-vite build && electron-builder --mac",
+    "dist:win": "electron-vite build && electron-builder --win"
+  },
+  "devDependencies": {
+    "@codemirror/autocomplete": "6.20.4",
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/language-data": "6.5.2",
+    "@codemirror/search": "6.7.2",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
+    "@lezer/common": "1.5.4",
+    "@lezer/highlight": "1.2.5",
+    "@lezer/markdown": "1.8.1",
+    "@playwright/test": "1.64.1",
+    "@types/markdown-it": "14.2.0",
+    "@types/node": "24.19.2",
+    "electron": "44.9.3",
+    "electron-builder": "26.17.0",
+    "electron-vite": "5.0.0",
+    "highlight.js": "11.12.0",
+    "markdown-it": "15.0.3",
+    "markdown-it-footnote": "4.0.0",
+    "mermaid": "12.1.0",
+    "typescript": "6.0.3",
+    "vite": "7.3.7",
+    "vitest": "4.1.12"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.3": true,
+    "electron-winstaller": false
+  },
+  "author": "maegdonaldeu"
+}

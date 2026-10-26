@@ -1,0 +1,42 @@
+# GitHub에 올리면 Windows·Mac에서 테스트하고 설치 파일을 만든다.
+# Actions 탭에서 직접 실행하거나, v로 시작하는 태그(예: v0.1.0)를 올리면 돈다.
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx electron --version # Electron 실행 파일 내려받기
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run e2e
+      - name: Windows 실행 파일 (.exe 하나)
+        if: runner.os == 'Windows'
+        run: npm run dist:win
+      - name: Mac 실행 파일 (.app을 담은 zip)
+        if: runner.os == 'macOS'
+        run: npm run dist:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MdEditor-${{ runner.os }}
+          path: |
+            dist/*.exe
+            dist/*.zip
+          if-no-files-found: error

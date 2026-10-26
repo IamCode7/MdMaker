@@ -1,0 +1,239 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --text: #1d1d1f;
+  --secondary: #6e6e73;
+  --tertiary: #b0b0b5;
+  --accent: #0a63c9;
+  --link: #0a63c9;
+  --code-bg: #f5f5f7;
+  --rule: #d2d2d7;
+  --quote-bar: #c7c7cc;
+  --tabbar-bg: #ececee;
+  --tab-hover: #e2e2e5;
+  --error: #d70015;
+  --preview-bg: #d9d9de;
+  --note: #0969da; --tip: #1a7f37; --important: #8250df; --warning: #9a6700; --caution: #cf222e;
+  --tok-keyword: #ad3da4; --tok-string: #c41a16; --tok-comment: #707f8c; --tok-number: #1c00cf;
+  --tok-function: #326d74; --tok-type: #3900a0;
+  --font: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "D2Coding", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e1e1e;
+    --text: #f2f2f2;
+    --secondary: #a1a1a6;
+    --tertiary: #5c5c61;
+    --accent: #4493f8;
+    --link: #4493f8;
+    --code-bg: #2a2a2c;
+    --rule: #3a3a3c;
+    --quote-bar: #545458;
+    --tabbar-bg: #161616;
+    --tab-hover: #262628;
+    --error: #ff6961;
+    --preview-bg: #111113;
+    --note: #4493f8; --tip: #3fb950; --important: #ab7df8; --warning: #d29922; --caution: #f85149;
+    --tok-keyword: #ff7ab2; --tok-string: #fc6a5d; --tok-comment: #7f8c98; --tok-number: #d9c97c;
+    --tok-function: #67b7a4; --tok-type: #dabaff;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.6 var(--font);
+  overflow: hidden;
+}
+
+/* MARK: 탭 막대 */
+#tabbar {
+  display: flex;
+  align-items: stretch;
+  height: 36px;
+  flex: none;
+  background: var(--tabbar-bg);
+  border-bottom: 1px solid var(--rule);
+  user-select: none;
+}
+#tabs { display: flex; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 90px;
+  max-width: 220px;
+  padding: 0 8px 0 14px;
+  border-right: 1px solid var(--rule);
+  color: var(--secondary);
+  font-size: 13px;
+  cursor: default;
+}
+.tab:hover { background: var(--tab-hover); }
+.tab.active { background: var(--bg); color: var(--text); }
+.tab-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-close {
+  width: 18px; height: 18px; padding: 0;
+  border: none; border-radius: 4px; background: none;
+  color: inherit; font-size: 15px; line-height: 18px; cursor: pointer;
+  opacity: 0.6;
+}
+.tab-close:hover { background: var(--tab-hover); opacity: 1; }
+/* 저장 안 한 탭: 닫기 버튼 자리에 점, 마우스를 올리면 × */
+.tab.dirty .tab-close { font-size: 0; }
+.tab.dirty .tab-close::before { content: "●"; font-size: 10px; }
+.tab.dirty:hover .tab-close { font-size: 15px; }
+.tab.dirty:hover .tab-close::before { content: none; }
+#new-tab {
+  width: 36px; flex: none;
+  border: none; background: none;
+  color: var(--secondary); font-size: 20px; cursor: pointer;
+}
+#new-tab:hover { background: var(--tab-hover); color: var(--text); }
+/* 편집 화면 오른쪽 위의 > / < 버튼 (PDF 미리보기 열기·닫기) */
+#editor-pane { flex: 1; min-width: 0; min-height: 0; position: relative; display: flex; }
+#toggle-preview {
+  position: absolute; top: 10px; right: 16px; z-index: 5;
+  width: 30px; height: 30px; padding: 0;
+  border: 1px solid var(--rule); border-radius: 8px; background: var(--bg);
+  color: var(--secondary); font: 600 16px/28px var(--font); cursor: pointer;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+}
+#toggle-preview:hover { color: var(--accent); border-color: var(--accent); }
+body:not(.preview-hidden) #toggle-preview { color: var(--accent); }
+
+/* MARK: 편집 | 막대 | PDF 미리보기 */
+#main { flex: 1; min-height: 0; display: flex; }
+#divider { width: 6px; flex: none; cursor: col-resize; background: var(--tabbar-bg); border-left: 1px solid var(--rule); }
+#divider:hover, body.resizing #divider { background: color-mix(in srgb, var(--accent) 30%, var(--tabbar-bg)); }
+#preview { width: 560px; flex: none; overflow: auto; background: var(--preview-bg); padding: 16px; }
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing iframe { pointer-events: none; }
+.preview-sheet { margin: 0 auto; box-shadow: 0 1px 6px rgb(0 0 0 / 0.25); background: #fff; overflow: hidden; }
+.preview-sheet iframe { border: none; display: block; transform-origin: 0 0; background: #fff; }
+.preview-measure { position: fixed; left: -30000px; top: 0; width: 1000px; height: 1200px; border: none; visibility: hidden; }
+body.preview-hidden #divider, body.preview-hidden #preview { display: none; }
+/* 창이 아주 좁으면 미리보기를 숨긴다 */
+@media (max-width: 760px) { #divider, #preview, #toggle-preview { display: none; } }
+
+/* MARK: 편집기 */
+#editor { flex: 1; min-width: 0; min-height: 0; }
+.cm-editor { height: 100%; background: var(--bg); color: var(--text); }
+.cm-editor.cm-focused { outline: none; }
+.cm-line { padding: 0 4px; }
+.cm-cursor { border-left-color: var(--text); }
+.cm-selectionBackground, .cm-focused .cm-selectionBackground { background: color-mix(in srgb, var(--accent) 25%, transparent) !important; }
+
+.md-h { font-weight: 700; line-height: 1.35; }
+.md-h1 { font-size: 1.85em; } .md-h2 { font-size: 1.5em; } .md-h3 { font-size: 1.25em; }
+.md-h4 { font-size: 1.1em; } .md-h5, .md-h6 { font-size: 1em; }
+.md-strong { font-weight: 700; }
+.md-em { font-style: italic; }
+.md-strike { text-decoration: line-through; }
+.md-link, .cm-bare-url { color: var(--link); }
+.md-quote { color: var(--secondary); }
+.md-code {
+  font-family: var(--mono); font-size: 0.92em;
+  background: var(--code-bg); border-radius: 4px; padding: 1px 3px;
+}
+/* 문법 기호(#, **, `, > 등)는 흐리게 */
+.md-mark, .md-url, .md-link.tok-string { color: var(--tertiary) !important; }
+.cm-bare-url, .cm-bare-url .md-url { color: var(--link) !important; }
+/* 본문 속 HTML 태그(<br>, <details> 등)도 문법 기호처럼 흐리게 */
+.md-mark *, .cm-line:not(.cm-codeblock) .tok-keyword { color: var(--tertiary) !important; }
+.cm-listmark, .cm-task, .cm-listmark *, .cm-task * { color: var(--accent) !important; }
+/* 본문의 &copy; 같은 특수문자 코드는 회색 (코드 블록 안의 문자 값은 문자열 색 그대로) */
+.cm-line:not(.cm-codeblock) .md-char { color: var(--secondary); }
+.cm-task { cursor: pointer; }
+.cm-footnote-ref { font-size: 0.72em; vertical-align: super; color: var(--accent); }
+.cm-footnote-def { color: var(--accent); }
+
+/* 코드 블록 · 문서 정보: 회색 상자
+   (줄에는 margin을 쓰지 않는다. 편집기가 줄 높이를 잘못 재서 클릭 위치가 어긋난다. 여백은 padding으로) */
+.cm-codeblock, .cm-frontmatter {
+  background: var(--code-bg);
+  font-family: var(--mono);
+  font-size: 14px;
+  padding: 0 16px !important;
+}
+.cm-codeblock .md-code { background: none; padding: 0; font-size: inherit; }
+.cm-codeblock-first, .cm-frontmatter-first { border-radius: 8px 8px 0 0; padding-top: 8px !important; }
+.cm-codeblock-last, .cm-frontmatter-last { border-radius: 0 0 8px 8px; padding-bottom: 8px !important; }
+.cm-codeblock-first.cm-codeblock-last, .cm-frontmatter-first.cm-frontmatter-last { border-radius: 8px; }
+/* 문서 정보는 제목·수평선 꾸밈을 받지 않게 */
+.cm-frontmatter, .cm-frontmatter * {
+  font-size: 13px !important; font-weight: normal !important; font-style: normal !important;
+  color: var(--secondary) !important; text-decoration: none !important;
+}
+
+.tok-keyword { color: var(--tok-keyword); }
+.tok-string { color: var(--tok-string); }
+.tok-comment { color: var(--tok-comment); }
+.tok-number { color: var(--tok-number); }
+.tok-function { color: var(--tok-function); }
+.tok-type { color: var(--tok-type); }
+
+/* 인용문: PDF처럼 왼쪽 세로줄 (안쪽 인용일수록 하나씩 더) */
+.cm-quote { padding-left: 18px !important; }
+.cm-quote-1 { box-shadow: inset 3px 0 0 var(--quote-bar); }
+.cm-quote-2 { box-shadow: inset 3px 0 0 var(--quote-bar), inset 9px 0 0 var(--bg), inset 12px 0 0 var(--quote-bar); padding-left: 24px !important; }
+.cm-quote-3 { box-shadow: inset 3px 0 0 var(--quote-bar), inset 9px 0 0 var(--bg), inset 12px 0 0 var(--quote-bar), inset 18px 0 0 var(--bg), inset 21px 0 0 var(--quote-bar); padding-left: 30px !important; }
+
+/* 콜아웃: 종류별 색 상자 + 왼쪽 굵은 선 */
+.cm-callout { --callout: var(--note); background: color-mix(in srgb, var(--callout) 10%, transparent); box-shadow: inset 4px 0 0 var(--callout); padding-left: 18px !important; }
+.cm-callout-tip { --callout: var(--tip); }
+.cm-callout-important { --callout: var(--important); }
+.cm-callout-warning { --callout: var(--warning); }
+.cm-callout-caution { --callout: var(--caution); }
+.cm-callout .md-quote { color: var(--text); }
+.cm-callout-first { border-radius: 6px 6px 0 0; padding-top: 6px !important; }
+.cm-callout-last { border-radius: 0 0 6px 6px; padding-bottom: 6px !important; }
+.cm-callout-first.cm-callout-last { border-radius: 6px; }
+.cm-callout-label { font-weight: 700; color: var(--callout) !important; }
+.cm-callout-label .md-mark { color: inherit !important; }
+
+/* 접기 상자: 얇은 테두리 */
+.cm-details { border-left: 1px solid var(--rule); border-right: 1px solid var(--rule); padding: 0 14px !important; }
+.cm-details-first { border-top: 1px solid var(--rule); border-radius: 6px 6px 0 0; padding-top: 6px !important; }
+.cm-details-last { border-bottom: 1px solid var(--rule); border-radius: 0 0 6px 6px; padding-bottom: 6px !important; }
+.cm-details-first.cm-details-last { border-radius: 6px; }
+
+/* 큰 제목(H1·H2) 아래 밑줄: PDF와 같게 */
+.cm-heading-rule { border-bottom: 1px solid var(--rule); padding-bottom: 4px !important; }
+
+/* 수평선: 줄 가운데에 가로선 */
+.cm-hr { background: linear-gradient(var(--rule), var(--rule)) no-repeat center / 100% 1px; color: var(--tertiary); }
+
+/* MARK: 아래에 그리는 그림 */
+.cm-preview { padding: 10px 4px 14px; }
+.cm-preview-mermaid svg { max-width: 100%; height: auto; }
+.cm-preview-image img { display: block; max-width: 100%; max-height: 400px; }
+.cm-preview-error { color: var(--error); font-size: 12px; }
+.cm-preview-table table { border-collapse: collapse; font-size: 14px; }
+.cm-preview-table th, .cm-preview-table td { border: 1px solid var(--text); padding: 6px 12px; }
+.cm-preview-table th { background: var(--code-bg); font-weight: 600; }
+.cm-preview-table code { font-family: var(--mono); font-size: 13px; background: var(--code-bg); padding: 1px 4px; border-radius: 4px; }
+
+/* MARK: 언어 목록 · 찾기 */
+.cm-tooltip.cm-tooltip-autocomplete { border: 1px solid var(--rule); border-radius: 8px; background: var(--bg); box-shadow: 0 6px 20px rgb(0 0 0 / 0.18); padding: 4px 0; }
+.cm-tooltip-autocomplete > ul { font-family: var(--mono) !important; font-size: 13px; max-height: 260px !important; }
+.cm-tooltip-autocomplete > ul > li { padding: 3px 14px !important; }
+.cm-tooltip-autocomplete > ul > li[aria-selected] { background: var(--accent) !important; color: #fff !important; border-radius: 4px; margin: 0 4px; }
+.cm-completionDetail { float: right; font-style: normal !important; font-weight: 700; }
+.cm-panels { background: var(--tabbar-bg) !important; color: var(--text) !important; border-color: var(--rule) !important; }
+
+/* MARK: 알림 */
+#status {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+  padding: 8px 16px; border-radius: 18px;
+  background: var(--text); color: var(--bg); font-size: 13px;
+  opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+#status.visible { opacity: 0.92; }
+#status.error { background: var(--error); color: #fff; }
