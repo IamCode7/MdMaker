@@ -210,7 +210,7 @@ function updateChrome(): void {
       return element
     })
   )
-  if (active) api.setWindowState(`${tabName(active)}${isDirty(active) ? ' •' : ''} — MdEditor`, tabs.some(isDirty))
+  if (active) api.setWindowState(`${tabName(active)}${isDirty(active) ? ' •' : ''} — MdMaker`, tabs.some(isDirty))
 }
 
 // MARK: - 저장

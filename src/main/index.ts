@@ -158,7 +158,7 @@ function createWindow(): void {
     minWidth: 480,
     minHeight: 320,
     show: false,
-    title: 'MdEditor',
+    title: 'MdMaker',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#ffffff',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

@@ -1,8 +1,9 @@
 {
   "name": "mdeditor",
-  "productName": "MdEditor",
-  "version": "0.1.0",
+  "productName": "MdMaker",
+  "version": "1.0.0",
   "description": "Markdown editor",
+  "license": "MPL-2.0",
   "main": "./out/main/index.js",
   "private": true,
   "scripts": {
@@ -11,8 +12,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "e2e": "electron-vite build && playwright test",
-    "dist:mac": "electron-vite build && electron-builder --mac",
-    "dist:win": "electron-vite build && electron-builder --win"
+    "dist:mac": "npm run notices && electron-vite build && electron-builder --mac",
+    "dist:win": "npm run notices && electron-vite build && electron-builder --win",
+    "notices": "node scripts/third-party-notices.cjs"
   },
   "devDependencies": {
     "@codemirror/autocomplete": "6.20.4",
