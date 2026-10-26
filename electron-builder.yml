@@ -17,11 +17,13 @@ fileAssociations:
 # Mac: .app 하나를 zip으로 (풀면 MdMaker.app 하나, 더블클릭으로 실행)
 mac:
   target: zip
+  icon: build/MdMakerLogo.png
   artifactName: ${productName}-v${version}-mac.${ext}
   category: public.app-category.productivity
 # Windows: 설치 없이 실행되는 .exe 파일 하나
 win:
   target: portable
+  icon: build/MdMakerLogo.png
 portable:
   artifactName: ${productName}-v${version}-windows.exe
 linux:
