@@ -105,6 +105,24 @@ function safeLoad(key: string): string | null {
   }
 }
 
+// MARK: - 편집기 글씨 크기
+
+const EDITOR_FONT_SIZE = 'editor-font-size'
+const DEFAULT_FONT_SIZE = 15
+const MIN_FONT_SIZE = 11
+const MAX_FONT_SIZE = 24
+const savedFontSize = Number(safeLoad(EDITOR_FONT_SIZE))
+let editorFontSize = Number.isInteger(savedFontSize) && savedFontSize >= MIN_FONT_SIZE && savedFontSize <= MAX_FONT_SIZE
+  ? savedFontSize
+  : DEFAULT_FONT_SIZE
+
+function setEditorFontSize(size: number): void {
+  editorFontSize = Math.min(Math.max(size, MIN_FONT_SIZE), MAX_FONT_SIZE)
+  view.dom.style.setProperty('--editor-font-size', `${editorFontSize}px`)
+  view.requestMeasure()
+  safeStore(EDITOR_FONT_SIZE, String(editorFontSize))
+}
+
 /** 가운데 막대를 끌어서 미리보기 폭을 바꾼다. */
 function setupDivider(): void {
   const divider = document.getElementById('divider')!
@@ -298,6 +316,9 @@ async function run(command: MenuCommand): Promise<void> {
     case 'nextTab': return cycleTab(1)
     case 'previousTab': return cycleTab(-1)
     case 'togglePreview': return setPreviewVisible(document.body.classList.contains('preview-hidden'))
+    case 'increaseFontSize': return setEditorFontSize(editorFontSize + 1)
+    case 'decreaseFontSize': return setEditorFontSize(editorFontSize - 1)
+    case 'resetFontSize': return setEditorFontSize(DEFAULT_FONT_SIZE)
   }
   if (!tab) return
   switch (command) {
@@ -324,6 +345,7 @@ document.getElementById('new-tab')!.addEventListener('click', newTab)
 toggleButton.addEventListener('click', () => void run('togglePreview'))
 document.body.classList.add('preview-hidden')
 setupDivider()
+setEditorFontSize(editorFontSize)
 
 newTab()
 
