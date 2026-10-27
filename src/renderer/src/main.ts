@@ -3,12 +3,14 @@ import { openSearchPanel } from '@codemirror/search'
 import type { EditorState, Text } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import type { MenuCommand, OpenedFile } from '../../shared/api'
+import { formatAccelerator, menuAccelerators } from '../../shared/shortcuts'
 import { insertLinkCommand, wrapWith } from './editor/commands'
 import { renderMermaid, setDocumentDir } from './editor/livePreview'
-import { createEditorState } from './editor/setup'
+import { createEditorState, isSourceMode, setSourceMode } from './editor/setup'
 import { mermaidBlocks, renderPage } from './markdown/html'
 import { basename, dirname } from './markdown/paths'
 import { PdfPreview } from './preview'
+import { renderSyntaxPanel } from './syntaxPanel'
 import './style.css'
 
 interface Tab {
@@ -44,7 +46,7 @@ function createTab(file?: OpenedFile): Tab {
   let untitledNumber = 1
   while (!file && untitledNumbers.has(untitledNumber)) untitledNumber++
 
-  const state = createEditorState(file?.content ?? '', file ? dirname(file.path) : null, () => {
+  const state = createEditorState(file?.content ?? '', file ? dirname(file.path) : null, sourceMode, () => {
     updateChrome()
     refreshPreview()
   })
@@ -102,6 +104,98 @@ function safeLoad(key: string): string | null {
     return localStorage.getItem(key)
   } catch {
     return null
+  }
+}
+
+// MARK: - 문법 창
+
+const SYNTAX_PANEL_OPEN = 'syntax-panel-open'
+const SYNTAX_PANEL_WIDTH = 'syntax-panel-width'
+const isMac = api.platform === 'darwin'
+const accelerators = menuAccelerators(isMac)
+const shortcutText = (command: MenuCommand): string => formatAccelerator(accelerators[command], isMac)
+const syntaxPanel = document.getElementById('syntax-panel')!
+const syntaxButton = document.getElementById('toggle-syntax')!
+/** style.css에서 문법 창을 숨기는 좁은 창 기준과 같다. */
+const narrowWindow = window.matchMedia('(max-width: 760px)')
+/** 문법 창을 열 때 넓힌 창 폭 (닫을 때 그만큼 되돌린다). 넓히지 않은 상태면 null */
+let syntaxWidenedBy: number | null = null
+/** 창 폭 바꾸기를 한 번에 하나씩 차례로 한다. */
+let syntaxResizing = Promise.resolve()
+
+/** 왼쪽 위 < / > 버튼: 문법 창을 열고 창을 그 폭만큼 넓힌다. 닫으면 되돌린다. */
+function setSyntaxPanelVisible(visible: boolean): Promise<void> {
+  if (visible === !document.body.classList.contains('syntax-hidden')) return syntaxResizing
+  // 좁은 창에선 문법 창이 보이지 않으니 열지 않는다. (열림 상태와 창 폭도 그대로)
+  if (visible && narrowWindow.matches) return syntaxResizing
+  document.body.classList.toggle('syntax-hidden', !visible)
+  syntaxButton.textContent = visible ? '>' : '<'
+  syntaxButton.title = `문법 창 ${visible ? '닫기' : '열기'} (${shortcutText('toggleSyntaxPanel')})`
+  safeStore(SYNTAX_PANEL_OPEN, visible ? '1' : '0')
+  // 앞의 창 폭 응답을 기다리는 동안 다시 열고 닫았을 수 있으니, 차례가 왔을 때의 열림 상태에 맞춘다.
+  syntaxResizing = syntaxResizing.then(async () => {
+    const open = !document.body.classList.contains('syntax-hidden')
+    if (open && syntaxWidenedBy === null) {
+      syntaxWidenedBy = await api.resizeWindowBy(syntaxPanel.offsetWidth + 6)
+    } else if (!open && syntaxWidenedBy !== null) {
+      if (syntaxWidenedBy !== 0) await api.resizeWindowBy(-syntaxWidenedBy)
+      syntaxWidenedBy = null
+    }
+  })
+  return syntaxResizing
+}
+
+/** 문법 창 오른쪽 막대를 끌어서 폭을 바꾼다. */
+function setupSyntaxDivider(): void {
+  const divider = document.getElementById('syntax-divider')!
+  const apply = (width: number) => {
+    syntaxPanel.style.width = `${Math.min(Math.max(width, 220), 520)}px`
+  }
+  const saved = Number(safeLoad(SYNTAX_PANEL_WIDTH))
+  if (saved > 0) apply(saved)
+
+  divider.addEventListener('mousedown', (event) => {
+    event.preventDefault()
+    document.body.classList.add('resizing')
+    const startX = event.clientX
+    const startWidth = syntaxPanel.offsetWidth
+    const move = (moveEvent: MouseEvent) => apply(startWidth + moveEvent.clientX - startX)
+    const up = () => {
+      document.body.classList.remove('resizing')
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      safeStore(SYNTAX_PANEL_WIDTH, String(syntaxPanel.offsetWidth))
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  })
+}
+
+// MARK: - 원문 보기
+
+const sourceButton = document.getElementById('toggle-source')!
+/** 앱 전체 설정: 모든 탭이 같은 상태로 보인다. */
+let sourceMode = false
+
+function toggleSourceMode(): void {
+  sourceMode = !sourceMode
+  sourceButton.classList.toggle('active', sourceMode)
+  sourceButton.setAttribute('aria-pressed', String(sourceMode))
+  sourceButton.title = `원문 보기 ${sourceMode ? '끄기' : '켜기'} (${shortcutText('toggleSourceMode')})`
+  applySourceMode()
+}
+
+/** 모든 탭(보고 있는 탭과 저장해 둔 탭)을 지금 원문 보기 설정에 맞춘다. */
+function applySourceMode(): void {
+  // 한글 조합 중에 꾸미기를 바꾸면 입력이 깨지므로 조합이 끝난 뒤에 맞춘다. 그 사이 탭을 옮겼어도 그때의 탭들을 모두 맞춘다.
+  if (view.composing) {
+    window.setTimeout(applySourceMode, 50)
+    return
+  }
+  for (const tab of tabs) {
+    if (isSourceMode(stateOf(tab)) === sourceMode) continue
+    if (tab === active) view.dispatch({ effects: setSourceMode(sourceMode) })
+    else tab.state = tab.state.update({ effects: setSourceMode(sourceMode) }).state
   }
 }
 
@@ -316,6 +410,8 @@ async function run(command: MenuCommand): Promise<void> {
     case 'nextTab': return cycleTab(1)
     case 'previousTab': return cycleTab(-1)
     case 'togglePreview': return setPreviewVisible(document.body.classList.contains('preview-hidden'))
+    case 'toggleSyntaxPanel': return setSyntaxPanelVisible(document.body.classList.contains('syntax-hidden'))
+    case 'toggleSourceMode': return toggleSourceMode()
     case 'increaseFontSize': return setEditorFontSize(editorFontSize + 1)
     case 'decreaseFontSize': return setEditorFontSize(editorFontSize - 1)
     case 'resetFontSize': return setEditorFontSize(DEFAULT_FONT_SIZE)
@@ -343,9 +439,16 @@ api.onOpenFile(openFile)
 api.onCloseRequest(() => void handleCloseRequest())
 document.getElementById('new-tab')!.addEventListener('click', newTab)
 toggleButton.addEventListener('click', () => void run('togglePreview'))
-document.body.classList.add('preview-hidden')
+syntaxButton.addEventListener('click', () => void run('toggleSyntaxPanel'))
+sourceButton.addEventListener('click', () => void run('toggleSourceMode'))
+document.body.classList.add('preview-hidden', 'syntax-hidden')
+syntaxButton.title = `문법 창 열기 (${shortcutText('toggleSyntaxPanel')})`
+sourceButton.title = `원문 보기 켜기 (${shortcutText('toggleSourceMode')})`
 setupDivider()
+setupSyntaxDivider()
+renderSyntaxPanel(syntaxPanel, isMac)
 setEditorFontSize(editorFontSize)
+if (safeLoad(SYNTAX_PANEL_OPEN) === '1') void setSyntaxPanelVisible(true)
 
 newTab()
 

@@ -18,6 +18,8 @@ export type MenuCommand =
   | 'nextTab'
   | 'previousTab'
   | 'togglePreview'
+  | 'toggleSyntaxPanel'
+  | 'toggleSourceMode'
   | 'increaseFontSize'
   | 'decreaseFontSize'
   | 'resetFontSize'

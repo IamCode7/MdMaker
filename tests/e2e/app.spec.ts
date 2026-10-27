@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { type ElectronApplication, type Page, _electron as electron, expect, test } from '@playwright/test'
+import { formatAccelerator } from '../../src/shared/shortcuts'
 
 /** 실제 앱을 띄운다. 저장·PDF 창 대신 임시 폴더에 바로 저장하는 테스트 모드로 연다. */
 async function launch(dir = mkdtempSync(join(tmpdir(), 'mdeditor-e2e-'))): Promise<{ app: ElectronApplication; page: Page; dir: string; errors: string[] }> {
@@ -378,3 +379,267 @@ for (const [name, content] of [
     await app.close()
   })
 }
+
+/** 메뉴 전체에서 이름 → 단축키 */
+const menuAcceleratorsByLabel = (app: ElectronApplication) =>
+  app.evaluate(({ Menu }) => {
+    const result: Record<string, string> = {}
+    const walk = (items: Electron.MenuItem[]) => {
+      for (const item of items) {
+        if (item.accelerator) result[item.label] = String(item.accelerator)
+        if (item.submenu) walk(item.submenu.items)
+      }
+    }
+    walk(Menu.getApplicationMenu()!.items)
+    return result
+  })
+
+const windowWidthOf = (app: ElectronApplication) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds().width)
+
+test('왼쪽 위 < 버튼·메뉴로 문법 창을 열고 닫으며, 단축키는 메뉴와 같은 글자로 OS에 맞게 보인다', async () => {
+  const { app, page, errors } = await launch()
+  try {
+    const isMac = await app.evaluate(() => process.platform === 'darwin')
+    const menu = await menuAcceleratorsByLabel(app)
+    expect(menu['문법 창 보기/숨기기']).toBe('CmdOrCtrl+Alt+L')
+    expect(menu['원문 보기 켜기/끄기']).toBe('CmdOrCtrl+/')
+
+    const button = page.locator('#toggle-syntax')
+    const panel = page.locator('#syntax-panel')
+    await expect(button).toHaveText('<')
+    await expect(panel).toBeHidden()
+    const before = await windowWidthOf(app)
+    const editorBefore = await page.locator('#editor').evaluate((element) => element.clientWidth)
+
+    await button.click()
+    await expect(button).toHaveText('>')
+    await expect(panel).toBeVisible()
+    // 창을 넓혀서 편집 화면 폭이 그대로 남는다
+    await expect.poll(() => windowWidthOf(app)).toBeGreaterThan(before)
+    await expect.poll(() => page.locator('#editor').evaluate((element) => element.clientWidth)).toBe(editorBefore)
+    for (const word of ['제목 (밑줄식)', '**굵게**', '![설명](그림.png)', '- [ ] 할 일', '> [!NOTE]', 'CAUTION', '[^1]', '|:---|---:|', '```mermaid', '<details>', '수평선', 'title: 문서 제목']) {
+      await expect(panel).toContainText(word)
+    }
+
+    // 문법 창의 단축키 = 실제 메뉴 단축키를 OS 모양으로 바꾼 것
+    const rows: Record<string, string[]> = {
+      '굵게 / 기울임': ['굵게', '기울임'],
+      '취소선 / 코드': ['취소선', '코드'],
+      '링크': ['링크'],
+      '저장 / 다른 이름으로': ['저장', '다른 이름으로 저장…'],
+      '새 탭 / 탭 닫기': ['새 탭', '탭 닫기'],
+      '다음 탭 / 이전 탭': ['다음 탭', '이전 탭'],
+      'PDF 미리보기': ['PDF 미리보기 보기/숨기기'],
+      'PDF로 내보내기': ['PDF로 내보내기…'],
+      '글씨 크게 / 작게': ['글씨 크게', '글씨 작게'],
+      '글씨 기본 크기': ['기본 크기'],
+      '문법 창': ['문법 창 보기/숨기기'],
+      '원문 보기': ['원문 보기 켜기/끄기']
+    }
+    const shown = await page.locator('.syntax-shortcuts tr').evaluateAll((trs) =>
+      Object.fromEntries(trs.map((tr) => [tr.querySelector('td')!.textContent, Array.from(tr.querySelectorAll('kbd'), (kbd) => kbd.textContent)]))
+    )
+    expect(shown).toEqual(
+      Object.fromEntries(Object.entries(rows).map(([name, labels]) => [name, labels.map((label) => formatAccelerator(menu[label], isMac))]))
+    )
+    await expect(page.locator('.syntax-shortcuts')).toContainText(isMac ? '⌥⌘L' : 'Ctrl+Alt+L')
+    await expect(page.locator('.syntax-shortcuts')).not.toContainText(isMac ? 'Ctrl' : '⌘')
+
+    // 다크 모드에서도 창 색이 바뀐다
+    const background = () => panel.evaluate((element) => getComputedStyle(element).backgroundColor)
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await expect.poll(background).toBe('rgb(22, 22, 22)')
+    await page.emulateMedia({ colorScheme: 'light' })
+    await expect.poll(background).toBe('rgb(236, 236, 238)')
+
+    await clickViewMenu(app, '문법 창 보기/숨기기')
+    await expect(button).toHaveText('<')
+    await expect(panel).toBeHidden()
+    await expect.poll(() => windowWidthOf(app)).toBe(before)
+    expect(errors).toEqual([])
+  } finally {
+    await app.close()
+  }
+})
+
+test('문법 창의 열림 상태와 폭을 앱 재시작 뒤에도 기억한다', async () => {
+  const first = await launch()
+  try {
+    await first.page.locator('#toggle-syntax').click()
+    const divider = (await first.page.locator('#syntax-divider').boundingBox())!
+    await first.page.mouse.move(divider.x + 3, divider.y + 100)
+    await first.page.mouse.down()
+    await first.page.mouse.move(divider.x + 3 + 80, divider.y + 100, { steps: 5 })
+    await first.page.mouse.up()
+    await expect(first.page.locator('#syntax-panel')).toHaveCSS('width', '380px')
+    expect(first.errors).toEqual([])
+  } finally {
+    await first.app.close()
+  }
+  const { app, page, errors } = await launch(first.dir)
+  try {
+    await expect(page.locator('#syntax-panel')).toBeVisible()
+    await expect(page.locator('#syntax-panel')).toHaveCSS('width', '380px')
+    await expect(page.locator('#toggle-syntax')).toHaveText('>')
+    await page.locator('#toggle-syntax').click()
+    await expect(page.locator('#syntax-panel')).toBeHidden()
+    expect(await page.evaluate(() => localStorage.getItem('syntax-panel-open'))).toBe('0')
+    expect(errors).toEqual([])
+  } finally {
+    await app.close()
+  }
+})
+
+test('MD 버튼·메뉴로 원문 보기를 켜면 꾸밈 없이 원문이 보이고, PDF 미리보기는 그대로이며 모든 탭에 적용된다', async () => {
+  const { app, page, errors } = await launch()
+  try {
+    const content = '# 제목\n\n**굵게** 와 `코드`\n\n| 이름 | 나이 |\n|---|---|\n| 철수 | 20 |\n\n```mermaid\nflowchart TD\n    A --> B\n```\n\n끝'
+    await setText(page, content)
+    await page.evaluate(() => (window as any).__md.view.dispatch({ selection: { anchor: (window as any).__md.view.state.doc.length } }))
+    const lines = page.locator('.cm-line')
+    const button = page.locator('#toggle-source')
+    await expect(lines.nth(0)).toHaveText('제목')
+    await expect(page.locator('.cm-preview')).toHaveCount(2)
+    await run(page, 'togglePreview')
+    await expect.poll(() => page.evaluate(() => (window as any).__md.pdfPreviewText() as string)).toContain('굵게 와 코드')
+
+    await button.click()
+    await expect(button).toHaveClass(/active/)
+    await expect(button).toHaveAttribute('aria-pressed', 'true')
+    await expect(lines.nth(0)).toHaveText('# 제목')
+    await expect(lines.nth(2)).toHaveText('**굵게** 와 `코드`')
+    for (const selector of ['.md-h1', '.md-strong', '.md-mark', '.cm-preview', '.cm-codeblock', '.tok-keyword']) {
+      await expect(page.locator(selector)).toHaveCount(0)
+    }
+    expect(await getText(page)).toBe(content)
+    // PDF 미리보기는 원문 보기와 상관없이 꾸민 결과
+    await setText(page, content + '\n\n**추가**')
+    await expect.poll(() => page.evaluate(() => (window as any).__md.pdfPreviewText() as string)).toContain('추가')
+    expect(await page.evaluate(() => (window as any).__md.pdfPreviewText() as string)).not.toContain('**')
+    await setText(page, content)
+
+    // 새 탭과 다른 탭도 같은 상태
+    await run(page, 'new')
+    await setText(page, '## 둘째')
+    await expect(lines.nth(0)).toHaveText('## 둘째')
+    await expect(page.locator('.md-h2')).toHaveCount(0)
+    await run(page, 'previousTab')
+    await expect(lines.nth(0)).toHaveText('# 제목')
+
+    await clickViewMenu(app, '원문 보기 켜기/끄기')
+    await expect(button).not.toHaveClass(/active/)
+    await expect(page.locator('.md-h1').first()).toBeVisible()
+    await expect(page.locator('.cm-preview')).toHaveCount(2)
+    await run(page, 'nextTab')
+    await expect(page.locator('.md-h2').first()).toBeVisible()
+    expect(errors).toEqual([])
+  } finally {
+    await app.close()
+  }
+})
+
+test('편집기에서 ⌘/(Ctrl+/)를 눌러도 주석이 들어가지 않고, 한글 조합 중에 원문 보기를 바꿔도 글자가 깨지지 않는다', async () => {
+  const { app, page, errors } = await launch()
+  try {
+    await setText(page, '**굵게**')
+    const editor = page.locator('.cm-content')
+    await editor.click()
+    // 편집기가 ⌘/ 를 먹지 않아야(preventDefault 안 함) Electron이 메뉴의 원문 보기 단축키로 넘긴다.
+    await page.evaluate(() =>
+      window.addEventListener('keydown', (event) => {
+        if (event.key === '/') (window as any).__slashHandled = event.defaultPrevented
+      })
+    )
+    await page.keyboard.press('ControlOrMeta+/')
+    expect(await page.evaluate(() => (window as any).__slashHandled)).toBe(false)
+    expect(await getText(page)).toBe('**굵게**')
+
+    await run(page, 'new')
+    await editor.click()
+    const session = await page.context().newCDPSession(page)
+    await session.send('Input.imeSetComposition', { text: 'ㅎ', selectionStart: 1, selectionEnd: 1 })
+    await clickViewMenu(app, '원문 보기 켜기/끄기')
+    await session.send('Input.imeSetComposition', { text: '한', selectionStart: 1, selectionEnd: 1 })
+    await session.send('Input.insertText', { text: '한' })
+    await session.send('Input.insertText', { text: '글' })
+    await page.keyboard.type(' **굵게**')
+    expect(await getText(page)).toBe('한글 **굵게**')
+    await expect(page.locator('#toggle-source')).toHaveClass(/active/)
+    await expect(page.locator('.md-strong')).toHaveCount(0)
+    await session.detach()
+    expect(errors).toEqual([])
+  } finally {
+    await app.close()
+  }
+})
+
+test('한글 조합 중 원문 보기를 켜고 바로 다른 탭에 갔다 와도 처음 탭이 원문 보기로 보인다', async () => {
+  const { app, page, errors } = await launch()
+  try {
+    await setText(page, '# 첫째\n\n')
+    await run(page, 'new')
+    await setText(page, '# 둘째')
+    await run(page, 'previousTab')
+    // 실제 입력기는 탭을 옮긴 뒤에 조합이 끝나지만, 자동 테스트의 가짜 조합은 탭을 옮기면 끝을 알리지 못한다.
+    // 그래서 "조합 중"을 직접 켜고 꺼서, 미뤄 둔 적용이 둘째 탭을 보고 있을 때 실행되게 한다.
+    await page.evaluate(() => {
+      const md = (window as any).__md
+      ;(window as any).__composing = true
+      Object.defineProperty(md.view, 'composing', { configurable: true, get: () => (window as any).__composing })
+      void md.run('toggleSourceMode')
+      void md.run('nextTab')
+    })
+    await page.evaluate(() => ((window as any).__composing = false))
+    await page.waitForTimeout(200)
+    await expect(page.locator('.cm-line').nth(0)).toHaveText('# 둘째')
+    await run(page, 'previousTab')
+    await expect(page.locator('#toggle-source')).toHaveClass(/active/)
+    await expect(page.locator('.cm-line').nth(0)).toHaveText('# 첫째')
+    await expect(page.locator('.md-h1')).toHaveCount(0)
+    expect(errors).toEqual([])
+  } finally {
+    await app.close()
+  }
+})
+
+test('문법 창을 빠르게 여러 번 열고 닫아도 창 폭이 원래대로 돌아온다', async () => {
+  const { app, page, errors } = await launch()
+  try {
+    const before = await windowWidthOf(app)
+    const editorBefore = await page.locator('#editor').evaluate((element) => element.clientWidth)
+    // 앞의 창 폭 응답을 기다리지 않고 연달아 누른다.
+    const toggle = (times: number) =>
+      page.evaluate((count) => Promise.all(Array.from({ length: count }, () => (window as any).__md.run('toggleSyntaxPanel'))), times)
+    await toggle(6)
+    await expect(page.locator('#syntax-panel')).toBeHidden()
+    await expect.poll(() => windowWidthOf(app)).toBe(before)
+    await toggle(5)
+    await expect(page.locator('#syntax-panel')).toBeVisible()
+    await expect.poll(() => page.locator('#editor').evaluate((element) => element.clientWidth)).toBe(editorBefore)
+    await toggle(7)
+    await expect(page.locator('#syntax-panel')).toBeHidden()
+    await expect.poll(() => windowWidthOf(app)).toBe(before)
+    expect(errors).toEqual([])
+  } finally {
+    await app.close()
+  }
+})
+
+test('좁은 창에서는 문법 창을 열지 않고 열림 상태와 창 폭도 그대로 둔다', async () => {
+  const { app, page, errors } = await launch()
+  try {
+    await app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0]
+      window.setBounds({ ...window.getBounds(), width: 600 })
+    })
+    await expect.poll(() => windowWidthOf(app)).toBe(600)
+    await clickViewMenu(app, '문법 창 보기/숨기기')
+    await page.waitForTimeout(300)
+    await expect(page.locator('#syntax-panel')).toBeHidden()
+    expect(await windowWidthOf(app)).toBe(600)
+    expect(await page.evaluate(() => localStorage.getItem('syntax-panel-open'))).toBeNull()
+    expect(errors).toEqual([])
+  } finally {
+    await app.close()
+  }
+})
