@@ -157,7 +157,15 @@ test('시작하면 무제 탭 하나와 편집기가 보이고, 입력한 MD를 
   await expect(page.locator('.md-strong').first()).toBeVisible()
   await expect(page.locator('.md-code').first()).toBeVisible()
   await expect(page.locator('.md-strike').first()).toBeVisible()
-  await expect(page.locator('.md-mark').first()).toBeVisible() // # · ** 같은 기호는 흐리게
+  // 커서가 닿은 요소(맨 끝 취소선)만 기호를 흐리게 보여주고, 나머지 # · ** · ` 는 숨긴다
+  const lines = page.locator('.cm-line')
+  await expect(page.locator('.md-mark').first()).toBeVisible()
+  await expect(lines.nth(0)).toHaveText('제목')
+  await expect(lines.nth(2)).toHaveText('굵게 와 코드 그리고 ~~취소~~')
+  // 커서를 굵게 안으로 옮기면 그 기호만 다시 보인다
+  await page.evaluate(() => (window as any).__md.view.dispatch({ selection: { anchor: '# 제목\n\n**굵'.length } }))
+  await expect(lines.nth(0)).toHaveText('제목')
+  await expect(lines.nth(2)).toHaveText('**굵게** 와 코드 그리고 취소')
   await expect(page.locator('.tab.dirty')).toHaveCount(1)
   expect(errors).toEqual([])
   await app.close()
