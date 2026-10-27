@@ -128,7 +128,13 @@ function buildMenu(): void {
     },
     {
       label: '보기',
-      submenu: [item('PDF 미리보기 보기/숨기기', 'CmdOrCtrl+Alt+P', 'togglePreview')]
+      submenu: [
+        item('글씨 크게', 'CmdOrCtrl+=', 'increaseFontSize'),
+        item('글씨 작게', 'CmdOrCtrl+-', 'decreaseFontSize'),
+        item('기본 크기', 'CmdOrCtrl+0', 'resetFontSize'),
+        { type: 'separator' },
+        item('PDF 미리보기 보기/숨기기', 'CmdOrCtrl+Alt+P', 'togglePreview')
+      ]
     },
     ...(app.isPackaged
       ? []

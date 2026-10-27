@@ -18,6 +18,9 @@ export type MenuCommand =
   | 'nextTab'
   | 'previousTab'
   | 'togglePreview'
+  | 'increaseFontSize'
+  | 'decreaseFontSize'
+  | 'resetFontSize'
 
 export interface OpenedFile {
   path: string
