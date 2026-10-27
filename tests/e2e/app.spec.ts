@@ -172,6 +172,86 @@ test('시작하면 무제 탭 하나와 편집기가 보이고, 입력한 MD를 
   await app.close()
 })
 
+test('수평선·목록·체크박스·인용·콜아웃 기호를 숨기고, 커서가 닿은 줄은 원문을 보여준다', async () => {
+  const { app, page, errors } = await launch()
+  try {
+    const content = [
+      '---', 'title: 문서', '---', '',
+      '큰 제목', '===', '',
+      '- 사과', '  - 배', '    - 감', '',
+      '1. 첫째', '',
+      '- [ ] 할 일', '- [x] 한 일', '',
+      '***', '',
+      '> 인용', '> > 안쪽', '',
+      '> [!NOTE]', '> 참고', '',
+      '> [!TIP] 내 제목', '> 도움말', '',
+      '```', '- 코드', '> 코드', '```', '',
+      '끝'
+    ].join('\n')
+    await setText(page, content)
+    const moveCursor = (pos: number) => page.evaluate((anchor) => (window as any).__md.view.dispatch({ selection: { anchor } }), pos)
+    const cursor = () => page.evaluate(() => (window as any).__md.view.state.selection.main.head as number)
+    await moveCursor(content.length)
+    const lines = page.locator('.cm-line')
+    const hidden = [
+      '---', 'title: 문서', '---', '',
+      '큰 제목', '', '',
+      '● 사과', '○ 배', '■ 감', '',
+      '1. 첫째', '',
+      '할 일', '한 일', '',
+      '', '',
+      '인용', '안쪽', '',
+      'Note', '참고', '',
+      '내 제목', '도움말', '',
+      '```', '- 코드', '> 코드', '```', '',
+      '끝'
+    ]
+    await expect(lines).toHaveText(hidden)
+    await expect(page.locator('.cm-callout-title')).toHaveText(['Note', '내 제목'])
+    const checkboxes = page.locator('.cm-checkbox input')
+    await expect(checkboxes).toHaveCount(2)
+    await expect(checkboxes.nth(0)).not.toBeChecked()
+    await expect(checkboxes.nth(1)).toBeChecked()
+
+    // 체크박스 모양을 클릭하면 문서의 [ ] 가 바뀌고, 커서는 그대로라 계속 체크박스로 보인다.
+    await page.locator('.cm-checkbox').first().click()
+    expect(await getText(page)).toContain('- [x] 할 일\n- [x] 한 일')
+    expect(await cursor()).toBe(content.length)
+    await expect(checkboxes.nth(0)).toBeChecked()
+    await page.locator('.cm-checkbox').nth(1).click()
+    expect(await getText(page)).toContain('- [x] 할 일\n- [ ] 한 일')
+    await expect(checkboxes.nth(1)).not.toBeChecked()
+
+    // 커서가 닿은 줄만 원문을 보여준다.
+    await moveCursor(content.indexOf('배'))
+    await expect(lines.nth(8)).toHaveText('- 배')
+    await expect(lines.nth(7)).toHaveText('● 사과')
+    await moveCursor(content.indexOf('[!NOTE]'))
+    await expect(lines.nth(21)).toHaveText('> [!NOTE]')
+    await expect(lines.nth(22)).toHaveText('참고')
+    await moveCursor(content.indexOf('큰 제목'))
+    await expect(lines.nth(5)).toHaveText('===')
+    // 숨긴 수평선 줄을 클릭하면 원문 *** 이 보인다.
+    await page.locator('.cm-hr').first().click({ position: { x: 20, y: 8 } })
+    await expect(page.locator('.cm-hr').first()).toHaveText('***')
+
+    // 인용 줄에서 한글을 조합해도 글자가 깨지지 않는다.
+    await moveCursor(content.indexOf('> 참고') + '> 참고'.length)
+    const session = await page.context().newCDPSession(page)
+    await session.send('Input.imeSetComposition', { text: 'ㅎ', selectionStart: 1, selectionEnd: 1 })
+    await session.send('Input.imeSetComposition', { text: '한', selectionStart: 1, selectionEnd: 1 })
+    await session.send('Input.insertText', { text: '한' })
+    await session.send('Input.insertText', { text: '글' })
+    await session.detach()
+    expect(await getText(page)).toContain('> [!NOTE]\n> 참고한글\n')
+    await moveCursor(0)
+    await expect(lines.nth(22)).toHaveText('참고한글')
+    expect(errors).toEqual([])
+  } finally {
+    await app.close()
+  }
+})
+
 test('코드 블록·콜아웃·수평선이 많아도 클릭한 줄에 커서가 가고, 수평선을 지울 수 있다', async () => {
   const { app, page } = await launch()
   const parts: string[] = []
