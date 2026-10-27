@@ -96,17 +96,20 @@ body {
   color: var(--secondary); font-size: 20px; cursor: pointer;
 }
 #new-tab:hover { background: var(--tab-hover); color: var(--text); }
-/* 편집 화면 오른쪽 위의 > / < 버튼 (PDF 미리보기 열기·닫기) */
+/* 편집 화면 오른쪽 위의 > / < 버튼 (PDF 미리보기 열기·닫기), 그 옆 MD 버튼 (원문 보기), 왼쪽 위 < / > 버튼 (문법 창) */
 #editor-pane { flex: 1; min-width: 0; min-height: 0; position: relative; display: flex; }
-#toggle-preview {
+#toggle-preview, #toggle-source, #toggle-syntax {
   position: absolute; top: 10px; right: 16px; z-index: 5;
   width: 30px; height: 30px; padding: 0;
   border: 1px solid var(--rule); border-radius: 8px; background: var(--bg);
   color: var(--secondary); font: 600 16px/28px var(--font); cursor: pointer;
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
 }
-#toggle-preview:hover { color: var(--accent); border-color: var(--accent); }
-body:not(.preview-hidden) #toggle-preview { color: var(--accent); }
+#toggle-preview:hover, #toggle-source:hover, #toggle-syntax:hover { color: var(--accent); border-color: var(--accent); }
+body:not(.preview-hidden) #toggle-preview, body:not(.syntax-hidden) #toggle-syntax, #toggle-source.active { color: var(--accent); }
+#toggle-source { right: 52px; font-size: 11px; letter-spacing: 0.02em; }
+#toggle-source.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg)); }
+#toggle-syntax { right: auto; left: 16px; }
 
 /* MARK: 편집 | 막대 | PDF 미리보기 */
 #main { flex: 1; min-height: 0; display: flex; }
@@ -119,8 +122,37 @@ body.resizing iframe { pointer-events: none; }
 .preview-sheet iframe { border: none; display: block; transform-origin: 0 0; background: #fff; }
 .preview-measure { position: fixed; left: -30000px; top: 0; width: 1000px; height: 1200px; border: none; visibility: hidden; }
 body.preview-hidden #divider, body.preview-hidden #preview { display: none; }
-/* 창이 아주 좁으면 미리보기를 숨긴다 */
-@media (max-width: 760px) { #divider, #preview, #toggle-preview { display: none; } }
+/* 창이 아주 좁으면 미리보기·문법 창을 숨긴다 (main.ts의 narrowWindow와 같은 기준) */
+@media (max-width: 760px) {
+  #divider, #preview, #toggle-preview, #syntax-divider, #syntax-panel, #toggle-syntax { display: none; }
+  #toggle-source { right: 16px; }
+}
+
+/* MARK: 문법 창 (왼쪽) */
+#syntax-panel {
+  width: 300px; flex: none; overflow-y: auto;
+  padding: 14px 16px 32px; background: var(--tabbar-bg); color: var(--text);
+  font-size: 13px; line-height: 1.5;
+}
+#syntax-divider { width: 6px; flex: none; cursor: col-resize; background: var(--tabbar-bg); border-right: 1px solid var(--rule); }
+#syntax-divider:hover, body.resizing #syntax-divider { background: color-mix(in srgb, var(--accent) 30%, var(--tabbar-bg)); }
+body.syntax-hidden #syntax-divider, body.syntax-hidden #syntax-panel { display: none; }
+.syntax-heading { margin: 4px 0 10px; font-size: 15px; font-weight: 700; }
+.syntax-heading:not(:first-child) { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--rule); }
+.syntax-item { margin-bottom: 14px; }
+.syntax-title { margin: 0; font-size: 13px; font-weight: 600; }
+.syntax-description { margin: 1px 0 5px; color: var(--secondary); font-size: 12px; }
+.syntax-example {
+  margin: 0; padding: 7px 10px; border: 1px solid var(--rule); border-radius: 6px;
+  background: var(--bg); font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text;
+}
+.syntax-shortcuts { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+.syntax-shortcuts td { padding: 4px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.syntax-shortcuts td:last-child { text-align: right; white-space: nowrap; color: var(--secondary); }
+.syntax-shortcuts kbd {
+  display: inline-block; min-width: 1.6em; padding: 0 5px; border: 1px solid var(--rule); border-radius: 4px;
+  background: var(--bg); color: var(--text); font: 12px/1.6 var(--font); text-align: center;
+}
 
 /* MARK: 편집기 */
 #editor { flex: 1; min-width: 0; min-height: 0; }
