@@ -7,7 +7,7 @@ import { EditorView, drawSelection, keymap } from '@codemirror/view'
 import { clickHandlers } from './commands'
 import { languageCompletion } from './completion'
 import { codeLanguages, markdownHighlight } from './highlight'
-import { documentDirField, followColorScheme, livePreview, previews, setDocumentDir } from './livePreview'
+import { documentDirField, followColorScheme, hideMarks, livePreview, previews, setDocumentDir } from './livePreview'
 
 /** CodeMirror 기본 스타일(고정폭 글꼴 등)을 덮어쓴다. 색은 style.css의 변수를 쓴다. */
 const editorTheme = EditorView.theme({
@@ -26,6 +26,7 @@ export function createEditorState(content: string, documentDir: string | null, o
     syntaxHighlighting(markdownHighlight),
     documentDirField,
     livePreview,
+    hideMarks,
     previews,
     followColorScheme,
     clickHandlers,

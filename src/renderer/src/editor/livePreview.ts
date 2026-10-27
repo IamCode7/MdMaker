@@ -3,6 +3,7 @@ import { type EditorState, type Range, StateEffect, StateField } from '@codemirr
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 import type { SyntaxNode } from '@lezer/common'
 import { frontMatterLength } from '../markdown/frontMatter'
+import { frontMatterEnd, hiddenMarkRanges } from '../markdown/hiddenMarks'
 import { renderBody } from '../markdown/html'
 import { mermaidConfig } from '../markdown/mermaidTheme'
 import { resolveImage } from '../markdown/paths'
@@ -158,6 +159,49 @@ export const livePreview = ViewPlugin.fromClass(
     update(update: ViewUpdate) {
       if (update.docChanged || syntaxTree(update.state) !== syntaxTree(update.startState)) {
         this.decorations = buildDecorations(update.state)
+      }
+    }
+  },
+  { decorations: (plugin) => plugin.decorations }
+)
+
+// MARK: - 문법 기호 숨기기 (Typora처럼)
+
+const hiddenMark = Decoration.replace({})
+
+/** 화면에 보이는 범위만 계산한다. */
+function buildHiddenMarks(view: EditorView, frontMatter: number): DecorationSet {
+  const { state } = view
+  const ranges = hiddenMarkRanges(state.doc, syntaxTree(state), frontMatter, state.selection.ranges, view.visibleRanges)
+  return Decoration.set(ranges.map((range) => hiddenMark.range(range.from, range.to)), true)
+}
+
+/** 커서가 닿지 않은 굵게·기울임·취소선·인라인 코드·제목의 기호를 숨긴다. */
+export const hideMarks = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet
+    /** 한글 조합 중이라 다시 계산하지 못하고 미뤄 둔 게 있는지 */
+    private pending = false
+    /** front matter가 끝나는 위치. 문서가 바뀔 때만 다시 찾는다. */
+    private frontMatter: number
+    constructor(view: EditorView) {
+      this.frontMatter = frontMatterEnd(view.state.doc)
+      this.decorations = buildHiddenMarks(view, this.frontMatter)
+    }
+    update(update: ViewUpdate) {
+      if (update.docChanged) this.frontMatter = frontMatterEnd(update.state.doc)
+      const changed =
+        update.docChanged ||
+        update.selectionSet ||
+        update.viewportChanged ||
+        syntaxTree(update.state) !== syntaxTree(update.startState)
+      if (update.view.composing) {
+        // 조합 중에 장식을 바꾸면 입력이 깨지므로 위치만 옮겨 두고, 조합이 끝난 뒤 다시 계산한다.
+        this.decorations = this.decorations.map(update.changes)
+        this.pending ||= changed
+      } else if (changed || this.pending) {
+        this.decorations = buildHiddenMarks(update.view, this.frontMatter)
+        this.pending = false
       }
     }
   },
