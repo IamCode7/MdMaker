@@ -44,11 +44,13 @@ function createRenderer(allowRawHTML: boolean): MarkdownItInstance {
     }
   })
 
+  md.core.ruler.push('fence-closed', (state) => markClosedFences(state.tokens, state.src))
+
   const fence = md.renderer.rules.fence!
   md.renderer.rules.fence = (tokens, index, options, env, self) => {
     const token = tokens[index]
     const language = token.info.trim().split(/\s+/)[0]?.toLowerCase()
-    const svg = language === 'mermaid' ? (env as RenderOptions | undefined)?.mermaidSVGs?.[token.content] : undefined
+    const svg = language === 'mermaid' && token.meta?.closed ? (env as RenderOptions | undefined)?.mermaidSVGs?.[token.content] : undefined
     const line = (env as RenderOptions | undefined)?.sourceLines && token.map ? ` data-line="${token.map[0] + ((env as { lineOffset?: number }).lineOffset ?? 0)}"` : ''
     return svg ? `<div class="mermaid"${line}>${svg}</div>\n` : fence(tokens, index, options, env, self)
   }
@@ -64,6 +66,17 @@ function createRenderer(allowRawHTML: boolean): MarkdownItInstance {
     return image(tokens, index, options, env, self)
   }
   return md
+}
+
+/** 펜스 블록마다 닫혔는지(meta.closed) 적는다. markdown-it은 안 닫힌 펜스를 끝까지 이어 붙이므로 마지막 줄이 닫는 펜스인지 본다. */
+function markClosedFences(tokens: Token[], source: string): void {
+  const lines = source.split('\n')
+  for (const token of tokens) {
+    if (token.type !== 'fence') continue
+    const last = token.map && token.map[1] - 1 > token.map[0] ? lines[token.map[1] - 1].replace(/^[\s>]*/, '').trimEnd() : ''
+    const closed = last.length >= token.markup.length && [...last].every((char) => char === token.markup[0])
+    token.meta = { ...token.meta, closed }
+  }
 }
 
 /** `- [ ] 할 일` → 체크박스. (markdown-it 기본엔 없어서 직접 붙인다) */
@@ -107,12 +120,15 @@ export function renderBody(markdown: string, options: RenderOptions = {}): strin
   return openDetails(addCallouts(md.render(body, { ...options, lineOffset })))
 }
 
-/** 문서 속 ```mermaid 블록의 코드들 (PDF에 넣을 SVG를 미리 그릴 때 쓴다) */
+/** 문서 속 ```mermaid 블록의 코드들 (PDF에 넣을 SVG를 미리 그릴 때 쓴다). 내용이 비었거나 아직 안 닫힌 블록은 뺀다. */
 export function mermaidBlocks(markdown: string): string[] {
-  return new MarkdownIt()
-    .parse(stripFrontMatter(markdown), {})
-    .filter((token) => token.type === 'fence' && token.info.trim().split(/\s+/)[0]?.toLowerCase() === 'mermaid')
+  const source = stripFrontMatter(markdown)
+  const tokens = new MarkdownIt().parse(source, {})
+  markClosedFences(tokens, source)
+  return tokens
+    .filter((token) => token.type === 'fence' && token.meta?.closed && token.info.trim().split(/\s+/)[0]?.toLowerCase() === 'mermaid')
     .map((token) => token.content)
+    .filter((code) => code.trim() !== '')
 }
 
 export function renderPage(markdown: string, options: RenderOptions = {}): string {

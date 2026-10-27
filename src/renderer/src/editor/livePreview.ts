@@ -245,6 +245,11 @@ class MermaidWidget extends WidgetType {
   toDOM() {
     const dom = document.createElement('div')
     dom.className = 'cm-preview cm-preview-mermaid'
+    // 내용이 비어 있거나 블록이 아직 안 닫혔으면 그리지도, 오류를 보여주지도 않는다.
+    if (this.code.trim() === '') {
+      dom.dataset.state = 'empty'
+      return dom
+    }
     dom.innerHTML = lastMermaidSVG.get(this.key) ?? ''
     // 입력이 0.3초 멈추면 다시 그린다.
     this.timer = window.setTimeout(async () => {
@@ -343,8 +348,10 @@ function buildPreviews(state: EditorState): DecorationSet {
       if (node.name === 'FencedCode') {
         const info = node.node.getChild('CodeInfo')
         if (info && doc.sliceString(info.from, info.to).trim().toLowerCase() === 'mermaid') {
+          // 아직 닫지 않은 블록은 아래 본문까지 코드로 잡히므로 빈 블록처럼 그리지 않는다.
+          const closed = node.node.getChildren('CodeMark').length >= 2
           const text = node.node.getChild('CodeText')
-          const code = text ? doc.sliceString(text.from, text.to) + '\n' : ''
+          const code = closed && text ? doc.sliceString(text.from, text.to) + '\n' : ''
           widget(node.to, new MermaidWidget(code, `mermaid#${mermaidIndex++}`, dark), 0)
         }
         return false
