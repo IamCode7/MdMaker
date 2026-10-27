@@ -90,8 +90,10 @@ export const clickHandlers = EditorView.domEventHandlers({
       }
     }
 
-    if (!modifier && !event.shiftKey && !event.altKey && target.closest('.cm-task')) {
-      const marker = taskMarkerAt(view.state, pos)
+    const task = target.closest('.cm-task')
+    if (!modifier && !event.shiftKey && !event.altKey && task) {
+      // 체크박스 모양은 원문 [ ] 자리를 대신하므로, 누른 좌표 대신 그 자리에서 찾는다.
+      const marker = taskMarkerAt(view.state, task.classList.contains('cm-checkbox') ? view.posAtDOM(task) : pos)
       if (marker) {
         event.preventDefault()
         const checked = view.state.doc.sliceString(marker.from + 1, marker.from + 2) !== ' '

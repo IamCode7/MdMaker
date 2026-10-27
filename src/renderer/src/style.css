@@ -151,6 +151,9 @@ body.preview-hidden #divider, body.preview-hidden #preview { display: none; }
 /* 본문의 &copy; 같은 특수문자 코드는 회색 (코드 블록 안의 문자 값은 문자열 색 그대로) */
 .cm-line:not(.cm-codeblock) .md-char { color: var(--secondary); }
 .cm-task { cursor: pointer; }
+/* 숨긴 목록 기호 대신 그리는 글머리표 · 체크박스 (PDF와 같은 모양) */
+.cm-bullet { display: inline-block; min-width: 0.8em; font-size: 0.6em; vertical-align: 0.2em; }
+.cm-checkbox input { margin: 0 0.15em 0 0; vertical-align: -0.1em; pointer-events: none; }
 .cm-footnote-ref { font-size: 0.72em; vertical-align: super; color: var(--accent); }
 .cm-footnote-def { color: var(--accent); }
 

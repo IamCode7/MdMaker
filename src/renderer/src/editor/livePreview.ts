@@ -3,12 +3,10 @@ import { type EditorState, type Range, StateEffect, StateField } from '@codemirr
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 import type { SyntaxNode } from '@lezer/common'
 import { frontMatterLength } from '../markdown/frontMatter'
-import { frontMatterEnd, hiddenMarkRanges } from '../markdown/hiddenMarks'
+import { CALLOUT, frontMatterEnd, hiddenMarkRanges, type MarkWidget } from '../markdown/hiddenMarks'
 import { renderBody } from '../markdown/html'
 import { mermaidConfig } from '../markdown/mermaidTheme'
 import { resolveImage } from '../markdown/paths'
-
-const CALLOUT = /^\s*(?:>\s*)+\[!(note|tip|important|warning|caution)\]/i
 
 // MARK: - 문서 폴더 (상대 경로 이미지용)
 
@@ -169,14 +167,53 @@ export const livePreview = ViewPlugin.fromClass(
 
 const hiddenMark = Decoration.replace({})
 
+/** 숨긴 기호 자리에 그리는 글머리표 · 체크박스 · 콜아웃 제목 */
+class MarkWidgetView extends WidgetType {
+  constructor(readonly value: MarkWidget) {
+    super()
+  }
+  eq(other: MarkWidgetView) {
+    return JSON.stringify(other.value) === JSON.stringify(this.value)
+  }
+  toDOM() {
+    const dom = document.createElement('span')
+    const { value } = this
+    if (value.kind === 'bullet') {
+      dom.className = 'cm-bullet'
+      dom.textContent = value.symbol
+    } else if (value.kind === 'task') {
+      // 클릭은 commands.ts의 .cm-task 처리가 받는다. 체크박스 자체는 눌리지 않게 해서 화면과 문서가 어긋나지 않게 한다.
+      dom.className = 'cm-task cm-checkbox'
+      const checkbox = document.createElement('input')
+      checkbox.type = 'checkbox'
+      checkbox.checked = value.checked
+      checkbox.tabIndex = -1
+      dom.append(checkbox)
+    } else {
+      dom.className = 'cm-callout-label cm-callout-title'
+      dom.textContent = value.title
+    }
+    return dom
+  }
+  /** 클릭을 편집기가 받아서 커서를 옮기거나(원문 보기) 체크박스를 바꾼다. */
+  ignoreEvent() {
+    return false
+  }
+}
+
 /** 화면에 보이는 범위만 계산한다. */
 function buildHiddenMarks(view: EditorView, frontMatter: number): DecorationSet {
   const { state } = view
   const ranges = hiddenMarkRanges(state.doc, syntaxTree(state), frontMatter, state.selection.ranges, view.visibleRanges)
-  return Decoration.set(ranges.map((range) => hiddenMark.range(range.from, range.to)), true)
+  return Decoration.set(
+    ranges.map((range) =>
+      (range.widget ? Decoration.replace({ widget: new MarkWidgetView(range.widget) }) : hiddenMark).range(range.from, range.to)
+    ),
+    true
+  )
 }
 
-/** 커서가 닿지 않은 굵게·기울임·취소선·인라인 코드·제목의 기호를 숨긴다. */
+/** 커서가 닿지 않은 굵게·기울임·취소선·인라인 코드·제목·수평선·목록·체크박스·인용·콜아웃의 기호를 숨긴다. */
 export const hideMarks = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet
