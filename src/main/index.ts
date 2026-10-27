@@ -16,6 +16,7 @@ import {
   type MenuItemConstructorOptions
 } from 'electron'
 import type { CloseChoice, MenuCommand, OpenedFile } from '../shared/api'
+import { menuAccelerators } from '../shared/shortcuts'
 
 const isMac = process.platform === 'darwin'
 /** 자동 테스트용: 저장·PDF 창 대신 이 폴더에 바로 저장한다. */
@@ -62,9 +63,10 @@ function send(command: MenuCommand): void {
 }
 
 function buildMenu(): void {
-  const item = (label: string, accelerator: string, command: MenuCommand): MenuItemConstructorOptions => ({
+  const accelerators = menuAccelerators(isMac)
+  const item = (label: string, command: MenuCommand): MenuItemConstructorOptions => ({
     label,
-    accelerator,
+    accelerator: accelerators[command],
     click: () => send(command)
   })
 
@@ -90,50 +92,52 @@ function buildMenu(): void {
     {
       label: '파일',
       submenu: [
-        item('새 탭', 'CmdOrCtrl+N', 'new'),
-        item('열기…', 'CmdOrCtrl+O', 'open'),
+        item('새 탭', 'new'),
+        item('열기…', 'open'),
         { type: 'separator' },
-        item('저장', 'CmdOrCtrl+S', 'save'),
-        item('다른 이름으로 저장…', 'CmdOrCtrl+Shift+S', 'saveAs'),
-        item('PDF로 내보내기…', 'CmdOrCtrl+Alt+E', 'exportPDF'),
+        item('저장', 'save'),
+        item('다른 이름으로 저장…', 'saveAs'),
+        item('PDF로 내보내기…', 'exportPDF'),
         { type: 'separator' },
-        item('탭 닫기', 'CmdOrCtrl+W', 'closeTab'),
+        item('탭 닫기', 'closeTab'),
         ...(isMac ? [] : [{ type: 'separator' } as const, { role: 'quit', label: '끝내기' } as const])
       ]
     },
     {
       label: '편집',
       submenu: [
-        item('실행 취소', 'CmdOrCtrl+Z', 'undo'),
-        item('실행 복귀', isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', 'redo'),
+        item('실행 취소', 'undo'),
+        item('실행 복귀', 'redo'),
         { type: 'separator' },
         { role: 'cut', label: '오려두기' },
         { role: 'copy', label: '복사하기' },
         { role: 'paste', label: '붙여넣기' },
         { role: 'selectAll', label: '모두 선택' },
         { type: 'separator' },
-        item('찾기…', 'CmdOrCtrl+F', 'find'),
-        item('찾기 및 바꾸기…', isMac ? 'Cmd+Alt+F' : 'Ctrl+H', 'replace')
+        item('찾기…', 'find'),
+        item('찾기 및 바꾸기…', 'replace')
       ]
     },
     {
       label: '서식',
       submenu: [
-        item('굵게', 'CmdOrCtrl+B', 'bold'),
-        item('기울임', 'CmdOrCtrl+I', 'italic'),
-        item('취소선', 'CmdOrCtrl+Shift+X', 'strikethrough'),
-        item('코드', 'CmdOrCtrl+Shift+C', 'code'),
-        item('링크', 'CmdOrCtrl+K', 'link')
+        item('굵게', 'bold'),
+        item('기울임', 'italic'),
+        item('취소선', 'strikethrough'),
+        item('코드', 'code'),
+        item('링크', 'link')
       ]
     },
     {
       label: '보기',
       submenu: [
-        item('글씨 크게', 'CmdOrCtrl+=', 'increaseFontSize'),
-        item('글씨 작게', 'CmdOrCtrl+-', 'decreaseFontSize'),
-        item('기본 크기', 'CmdOrCtrl+0', 'resetFontSize'),
+        item('글씨 크게', 'increaseFontSize'),
+        item('글씨 작게', 'decreaseFontSize'),
+        item('기본 크기', 'resetFontSize'),
         { type: 'separator' },
-        item('PDF 미리보기 보기/숨기기', 'CmdOrCtrl+Alt+P', 'togglePreview')
+        item('PDF 미리보기 보기/숨기기', 'togglePreview'),
+        item('문법 창 보기/숨기기', 'toggleSyntaxPanel'),
+        item('원문 보기 켜기/끄기', 'toggleSourceMode')
       ]
     },
     ...(app.isPackaged
@@ -142,8 +146,8 @@ function buildMenu(): void {
     {
       label: '윈도우',
       submenu: [
-        item('다음 탭', 'Ctrl+Tab', 'nextTab'),
-        item('이전 탭', 'Ctrl+Shift+Tab', 'previousTab'),
+        item('다음 탭', 'nextTab'),
+        item('이전 탭', 'previousTab'),
         { type: 'separator' },
         { role: 'minimize', label: '최소화' },
         ...(isMac ? [{ role: 'zoom', label: '확대/축소' } as const] : [])
