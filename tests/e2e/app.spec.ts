@@ -29,6 +29,12 @@ const setText = (page: Page, text: string) =>
 const getText = (page: Page) => page.evaluate(() => (window as any).__md.view.state.doc.toString() as string)
 const run = (page: Page, command: string) => page.evaluate((name) => (window as any).__md.run(name), command)
 
+/** 자동완성 목록이 막 뜬 직후(75ms 안)의 키는 CodeMirror가 무시하므로 잠깐 기다렸다 누른다. */
+const pressInList = async (page: Page, key: string) => {
+  await page.waitForTimeout(150)
+  await page.keyboard.press(key)
+}
+
 /** 실제 보기 메뉴를 눌러 메인 → 화면 명령 전달까지 확인한다. */
 const clickViewMenu = (app: ElectronApplication, label: string) =>
   app.evaluate(({ Menu }, name) => {
@@ -324,10 +330,10 @@ test('``` 뒤 언어 목록, mermaid → 다이어그램 종류 → 기본 문�
   await setText(page, '')
   await page.keyboard.type('```me')
   await expect(list).toHaveText(['mermaid›'])
-  await page.keyboard.press('ArrowRight')
+  await pressInList(page, 'ArrowRight')
   await expect(list.first()).toHaveText('무제 (빈 다이어그램)')
-  await page.keyboard.press('ArrowDown')
-  await page.keyboard.press('Enter')
+  await pressInList(page, 'ArrowDown')
+  await pressInList(page, 'Enter')
   expect(await getText(page)).toBe(
     '```mermaid\nflowchart TD\n    A[시작] --> B{조건}\n    B -->|예| C[처리]\n    B -->|아니오| D[종료]\n```'
   )
@@ -344,11 +350,7 @@ test('줄 맨 앞 | → 표 › 3×3, < → 접기 상자 (코드 블록 안·�
       const { from, to } = view.state.selection.main
       return { from, to, text: view.state.sliceDoc(from, to) as string }
     })
-  // 목록이 막 뜬 직후(75ms 안)의 키는 CodeMirror가 무시하므로 잠깐 기다렸다 누른다.
-  const press = async (key: string) => {
-    await page.waitForTimeout(150)
-    await page.keyboard.press(key)
-  }
+  const press = (key: string) => pressInList(page, key)
   await page.locator('.cm-content').click()
 
   // 표: → 로 들어가서 고른다.
@@ -564,6 +566,42 @@ const menuAcceleratorsByLabel = (app: ElectronApplication) =>
 
 const windowWidthOf = (app: ElectronApplication) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds().width)
 
+/**
+ * 문법 창을 열어 창을 넓혀도 화면 작업 영역(CI의 Windows 서버는 1024×768)을 넘지 않게 창과 문법 창을 줄인다.
+ * 화면을 넘으면 메인이 창 폭을 작업 영역 폭으로 잘라서 편집 화면이 줄어든다. (앱은 정상)
+ * 실제 작업 영역 폭과 창 테두리 폭을 재서, 본문 폭 + 테두리 + 문법 창 + 막대가 작업 영역 안에 들어가게 한다.
+ * 예: 1024px, 테두리 16px이면 본문 폭은 1024 - 16 - 220 - 6 = 782px 이하.
+ * 본문 폭이 좁은 창 기준(760px)을 넘어야 문법 창이 열리므로, 그만큼도 남지 않는 작은 화면이면 폭 유지 검사가 의미 없어 건너뛴다.
+ */
+async function fitSyntaxPanelInSmallScreen(app: ElectronApplication, page: Page): Promise<void> {
+  const panelWidth = 220 // 앱이 허용하는 문법 창 최소 폭
+  const dividerWidth = 6
+  const minContentWidth = 761 // 760px 이하에선 문법 창이 열리지 않는다 (style.css·main.ts의 좁은 창 기준)
+  const { workAreaWidth, frameWidth, contentWidth } = await app.evaluate(({ BrowserWindow, screen }) => {
+    const window = BrowserWindow.getAllWindows()[0]
+    const bounds = window.getBounds()
+    const contentWidth = window.getContentSize()[0]
+    return { workAreaWidth: screen.getDisplayMatching(bounds).workArea.width, frameWidth: bounds.width - contentWidth, contentWidth }
+  })
+  const maxContentWidth = workAreaWidth - frameWidth - panelWidth - dividerWidth
+  test.skip(
+    maxContentWidth < minContentWidth,
+    `화면 작업 영역 ${workAreaWidth}px이 너무 좁아, 문법 창이 열리는 최소 본문 폭 ${minContentWidth}px + 창 테두리 ${frameWidth}px + 문법 창 ${panelWidth + dividerWidth}px을 담을 수 없다`
+  )
+  // 큰 화면에선 처음 폭 그대로, 작은 화면에선 문법 창을 열어도 들어가는 폭으로 줄인다.
+  const targetWidth = Math.max(minContentWidth, Math.min(contentWidth, maxContentWidth))
+
+  await page.evaluate((width) => localStorage.setItem('syntax-panel-width', String(width)), panelWidth)
+  await page.reload()
+  await page.locator('.cm-content').waitFor()
+  await expect(page.locator('#syntax-panel')).toHaveCSS('width', `${panelWidth}px`)
+  await app.evaluate(({ BrowserWindow }, width) => {
+    const window = BrowserWindow.getAllWindows()[0]
+    window.setContentSize(width, window.getContentSize()[1])
+  }, targetWidth)
+  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(targetWidth)
+}
+
 test('왼쪽 위 < 버튼·메뉴로 문법 창을 열고 닫으며, 단축키는 메뉴와 같은 글자로 OS에 맞게 보인다', async () => {
   const { app, page, errors } = await launch()
   try {
@@ -571,6 +609,7 @@ test('왼쪽 위 < 버튼·메뉴로 문법 창을 열고 닫으며, 단축키�
     const menu = await menuAcceleratorsByLabel(app)
     expect(menu['문법 창 보기/숨기기']).toBe('CmdOrCtrl+Alt+L')
     expect(menu['원문 보기 켜기/끄기']).toBe('CmdOrCtrl+/')
+    await fitSyntaxPanelInSmallScreen(app, page)
 
     const button = page.locator('#toggle-syntax')
     const panel = page.locator('#syntax-panel')
@@ -773,6 +812,7 @@ test('한글 조합 중 원문 보기를 켜고 바로 다른 탭에 갔다 와�
 test('문법 창을 빠르게 여러 번 열고 닫아도 창 폭이 원래대로 돌아온다', async () => {
   const { app, page, errors } = await launch()
   try {
+    await fitSyntaxPanelInSmallScreen(app, page)
     const before = await windowWidthOf(app)
     const editorBefore = await page.locator('#editor').evaluate((element) => element.clientWidth)
     // 앞의 창 폭 응답을 기다리지 않고 연달아 누른다.
