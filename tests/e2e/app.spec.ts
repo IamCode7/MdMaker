@@ -255,6 +255,94 @@ test('``` 뒤 언어 목록, mermaid → 다이어그램 종류 → 기본 문�
   await app.close()
 })
 
+test('줄 맨 앞 | → 표 › 3×3, < → 접기 상자 (코드 블록 안·줄 중간에선 안 뜬다)', async () => {
+  const { app, page, errors } = await launch()
+  const list = page.locator('.cm-tooltip-autocomplete li')
+  const selection = () =>
+    page.evaluate(() => {
+      const { view } = (window as any).__md
+      const { from, to } = view.state.selection.main
+      return { from, to, text: view.state.sliceDoc(from, to) as string }
+    })
+  // 목록이 막 뜬 직후(75ms 안)의 키는 CodeMirror가 무시하므로 잠깐 기다렸다 누른다.
+  const press = async (key: string) => {
+    await page.waitForTimeout(150)
+    await page.keyboard.press(key)
+  }
+  await page.locator('.cm-content').click()
+
+  // 표: → 로 들어가서 고른다.
+  await page.keyboard.type('|')
+  await expect(list).toHaveText(['표›'])
+  await press('ArrowRight')
+  await expect(list).toHaveText(['3×3'])
+  await press('ArrowLeft')
+  await expect(list).toHaveText(['표›'])
+  await press('ArrowRight')
+  await expect(list).toHaveText(['3×3'])
+  await press('Enter')
+  expect(await getText(page)).toBe('|  |  |  |\n|---|---|---|\n|  |  |  |\n|  |  |  |')
+  expect(await selection()).toEqual({ from: 2, to: 2, text: '' })
+  await page.keyboard.type('이름')
+  expect((await getText(page)).split('\n')[0]).toBe('| 이름 |  |  |')
+  await expect(page.locator('.cm-preview-table th').first()).toHaveText('이름')
+
+  // 표: 들여쓰기 뒤에서 Enter(선택)로 들어간다.
+  await setText(page, '')
+  await page.keyboard.type('  |')
+  await expect(list).toHaveText(['표›'])
+  await press('Enter')
+  await expect(list).toHaveText(['3×3'])
+  await press('Enter')
+  expect(await getText(page)).toBe('  |  |  |  |\n  |---|---|---|\n  |  |  |  |\n  |  |  |  |')
+
+  // 접기 상자
+  await setText(page, '')
+  await page.keyboard.type('<')
+  await expect(list).toHaveText(['접기 상자'])
+  await press('Enter')
+  expect(await getText(page)).toBe('<details>\n<summary>제목</summary>\n\n내용\n\n</details>')
+  expect((await selection()).text).toBe('제목')
+
+  // 목록이 떠 있을 때 한글을 조합해 쳐도 글자가 깨지지 않고 목록은 닫힌다.
+  await setText(page, '')
+  await page.keyboard.type('|')
+  await expect(list).toHaveText(['표›'])
+  const session = await page.context().newCDPSession(page)
+  await session.send('Input.imeSetComposition', { text: 'ㅎ', selectionStart: 1, selectionEnd: 1 })
+  await session.send('Input.imeSetComposition', { text: '한', selectionStart: 1, selectionEnd: 1 })
+  await session.send('Input.insertText', { text: '한' })
+  await session.send('Input.insertText', { text: '글' })
+  await session.detach()
+  expect(await getText(page)).toBe('|한글')
+  await expect(list).toHaveCount(0)
+
+  // 줄 중간, 코드 블록 안에서는 뜨지 않는다.
+  for (const [before, mark] of [['글 ', '|'], ['글 ', '<'], ['```js\n', '|'], ['```js\n', '<']]) {
+    await setText(page, before)
+    await page.evaluate((pos) => (window as any).__md.view.dispatch({ selection: { anchor: pos } }), before.length)
+    await page.keyboard.type(mark)
+    await page.waitForTimeout(300)
+    await expect(list).toHaveCount(0)
+  }
+
+  // 바로 위 줄이 표면 표 행을 이어 쓰는 중이라 뜨지 않고, Enter는 줄바꿈이 된다.
+  await setText(page, '| a | b |\n|---|---|\n')
+  await page.evaluate(() => (window as any).__md.view.dispatch({ selection: { anchor: '| a | b |\n|---|---|\n'.length } }))
+  await page.keyboard.type('|')
+  await page.waitForTimeout(300)
+  await expect(list).toHaveCount(0)
+  await page.keyboard.press('Enter')
+  expect(await getText(page)).toBe('| a | b |\n|---|---|\n|\n')
+  // 빈 줄로 떨어진 표 아래에서는 새 표를 만들 수 있으니 뜬다.
+  await setText(page, '| a | b |\n|---|---|\n\n')
+  await page.evaluate(() => (window as any).__md.view.dispatch({ selection: { anchor: '| a | b |\n|---|---|\n\n'.length } }))
+  await page.keyboard.type('|')
+  await expect(list).toHaveText(['표›'])
+  expect(errors).toEqual([])
+  await app.close()
+})
+
 test('표·이미지·다이어그램을 아래에 그리고, 체크박스를 클릭하면 체크된다', async () => {
   const { app, page, dir, errors } = await launch()
   writeFileSync(join(dir, '점.png'), PNG)
@@ -642,4 +730,34 @@ test('좁은 창에서는 문법 창을 열지 않고 열림 상태와 창 폭�
   } finally {
     await app.close()
   }
+})
+
+test('```mermaid 를 한 글자씩 쳐도, 내용이 비었거나 안 닫혔으면 오류를 보여주지 않는다', async () => {
+  const { app, page, errors } = await launch()
+  await page.locator('#toggle-preview').click()
+  await page.locator('.cm-content').click()
+  await page.keyboard.type('```mermaid', { delay: 30 })
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(1_000)
+  await expect(page.locator('.cm-preview-error')).toHaveCount(0)
+  expect(await page.evaluate(() => (window as any).__md.pdfPreviewText() as string)).not.toMatch(/error|오류/i)
+
+  // 닫힌 빈 블록도 마찬가지
+  await setText(page, '```mermaid\n\n```')
+  await page.waitForTimeout(1_000)
+  await expect(page.locator('.cm-preview-error')).toHaveCount(0)
+
+  // 문서 중간에서 아직 닫지 않은 블록은 아래 본문이 코드로 잡혀도 오류를 보여주지 않는다.
+  await setText(page, '앞 본문\n\n```mermaid\n아래 본문')
+  await page.waitForTimeout(1_000)
+  await expect(page.locator('.cm-preview-error')).toHaveCount(0)
+  expect(await page.evaluate(() => (window as any).__md.pdfPreviewText() as string)).not.toMatch(/error|오류/i)
+
+  // 닫은 뒤 내용이 틀렸으면 지금처럼 오류를 보여준다.
+  await setText(page, '앞 본문\n\n```mermaid\n아래 본문\n```')
+  await expect(page.locator('.cm-preview-error')).toContainText('Mermaid 문법 오류')
+  await setText(page, '```mermaid\nflowchart TD\n    A -->\n```')
+  await expect(page.locator('.cm-preview-error')).toContainText('Mermaid 문법 오류')
+  expect(errors).toEqual([])
+  await app.close()
 })
