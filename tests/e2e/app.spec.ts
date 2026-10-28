@@ -509,9 +509,10 @@ test('> 버튼으로 PDF 미리보기를 열면 창이 넓어지고, 입력한 �
 
   await page.locator('.cm-content').click()
   await page.keyboard.type('# 미리보기 제목\n\n**굵은** 글자와 `코드`')
-  await expect.poll(() => page.evaluate(() => (window as any).__md.pdfPreviewText() as string)).toContain('미리보기 제목')
-  const text: string = await page.evaluate(() => (window as any).__md.pdfPreviewText())
-  expect(text).toContain('굵은 글자와 코드')
+  // 마지막에 친 글까지 그려진 미리보기 글을 그대로 받아 검사한다. (다시 읽으면 그리는 도중의 빈 글을 읽을 수 있다)
+  let text = ''
+  await expect.poll(async () => (text = await page.evaluate(() => (window as any).__md.pdfPreviewText() as string))).toContain('굵은 글자와 코드')
+  expect(text).toContain('미리보기 제목')
   expect(text).not.toContain('**')
   expect(text).not.toContain('#')
 
@@ -721,8 +722,9 @@ test('MD 버튼·메뉴로 원문 보기를 켜면 꾸밈 없이 원문이 보�
     expect(await getText(page)).toBe(content)
     // PDF 미리보기는 원문 보기와 상관없이 꾸민 결과
     await setText(page, content + '\n\n**추가**')
-    await expect.poll(() => page.evaluate(() => (window as any).__md.pdfPreviewText() as string)).toContain('추가')
-    expect(await page.evaluate(() => (window as any).__md.pdfPreviewText() as string)).not.toContain('**')
+    let previewText = ''
+    await expect.poll(async () => (previewText = await page.evaluate(() => (window as any).__md.pdfPreviewText() as string))).toContain('추가')
+    expect(previewText).not.toContain('**')
     await setText(page, content)
 
     // 새 탭과 다른 탭도 같은 상태
@@ -954,7 +956,11 @@ test('```mermaid 를 한 글자씩 쳐도, 내용이 비었거나 안 닫혔으�
   await page.keyboard.press('Escape')
   await page.waitForTimeout(1_000)
   await expect(page.locator('.cm-preview-error')).toHaveCount(0)
-  expect(await page.evaluate(() => (window as any).__md.pdfPreviewText() as string)).not.toMatch(/error|오류/i)
+  // 지금 문서로 다 그린 미리보기인지 알 수 있게, 다 친 뒤 mermaid 블록 앞에 확인용 문장을 넣고 그 문장이 보일 때 읽은 글로 검사한다.
+  await page.evaluate(() => (window as any).__md.view.dispatch({ changes: { from: 0, insert: '미리보기 확인용 문장\n\n' } }))
+  let previewText = ''
+  await expect.poll(async () => (previewText = await page.evaluate(() => (window as any).__md.pdfPreviewText() as string))).toContain('미리보기 확인용 문장')
+  expect(previewText).not.toMatch(/error|오류/i)
 
   // 닫힌 빈 블록도 마찬가지
   await setText(page, '```mermaid\n\n```')
@@ -965,7 +971,9 @@ test('```mermaid 를 한 글자씩 쳐도, 내용이 비었거나 안 닫혔으�
   await setText(page, '앞 본문\n\n```mermaid\n아래 본문')
   await page.waitForTimeout(1_000)
   await expect(page.locator('.cm-preview-error')).toHaveCount(0)
-  expect(await page.evaluate(() => (window as any).__md.pdfPreviewText() as string)).not.toMatch(/error|오류/i)
+  // '아래 본문'은 이 문서에만 있는 글이라 확인용 문장 역할을 한다.
+  await expect.poll(async () => (previewText = await page.evaluate(() => (window as any).__md.pdfPreviewText() as string))).toContain('아래 본문')
+  expect(previewText).not.toMatch(/error|오류/i)
 
   // 닫은 뒤 내용이 틀렸으면 지금처럼 오류를 보여준다.
   await setText(page, '앞 본문\n\n```mermaid\n아래 본문\n```')
