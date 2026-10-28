@@ -461,7 +461,7 @@ Object.assign(window, {
     activeIndex: () => (active ? tabs.indexOf(active) : -1),
     dirtyFlags: () => tabs.map(isDirty),
     pdfPreviewPages: () => Number(previewElement.dataset.pages ?? 0),
-    pdfPreviewText: () => previewElement.querySelector('iframe')?.contentDocument?.body.innerText ?? '',
+    pdfPreviewText: () => previewElement.querySelector('iframe')?.contentDocument?.body?.innerText ?? '',
     previewStates: () =>
       Array.from(document.querySelectorAll<HTMLElement>('.cm-preview')).map((element) => element.dataset.state ?? 'pending')
   }
