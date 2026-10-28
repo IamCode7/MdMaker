@@ -4,7 +4,7 @@
 
 쓰는 그대로 PDF가 보이는 마크다운 편집기
 
-[![release](https://img.shields.io/badge/Release-v2.0.0-blue?style=flat&logo=github&labelColor=1f2937)](https://github.com/IamCode7/MdMaker/releases/tag/v2.0.0)![platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-lightgrey?style=flat&labelColor=1f2937)![license](https://img.shields.io/badge/Licenses-MPL%202.0-orange?style=flat&labelColor=1f2937)
+[![release](https://img.shields.io/badge/Release-v2.0.1-blue?style=flat&logo=github&labelColor=1f2937)](https://github.com/IamCode7/MdMaker/releases/tag/v2.0.1)![platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-lightgrey?style=flat&labelColor=1f2937)![license](https://img.shields.io/badge/Licenses-MPL%202.0-orange?style=flat&labelColor=1f2937)
 
 </div>
 
@@ -36,8 +36,8 @@
 
 | OS                         | 파일                         | 실행                                   |
 | -------------------------- | ---------------------------- | -------------------------------------- |
-| Windows                    | `MdMaker-v2.0.0-windows.exe` | 더블클릭                               |
-| macOS (Apple Silicon)      | `MdMaker-v2.0.0-mac.zip`     | 압축을 풀고 `MdMaker.app`을 더블클릭   |
+| Windows                    | `MdMaker-v2.0.1-windows.exe` | 더블클릭                               |
+| macOS (Apple Silicon)      | `MdMaker-v2.0.1-mac.zip`     | 압축을 풀고 `MdMaker.app`을 더블클릭   |
 
 > [!NOTE]
 > 서명하지 않은 앱이라 처음 실행할 때 경고가 뜬다.
