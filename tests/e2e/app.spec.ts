@@ -833,6 +833,100 @@ test('문법 창을 빠르게 여러 번 열고 닫아도 창 폭이 원래대�
   }
 })
 
+test('미리보기·문법 창 때문에 창이 화면을 꽉 채워도 닫으면 원래 폭으로 돌아오고, 사용자가 최대화한 창은 그대로 둔다', async () => {
+  const { app, page, errors } = await launch()
+  try {
+    const isMac = await app.evaluate(() => process.platform === 'darwin')
+    const windowState = () =>
+      app.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0]
+        return { bounds: window.getBounds(), maximized: window.isMaximized() }
+      })
+    // 작은 화면(CI의 1024px Mac)처럼: 창 높이는 작업 영역 높이, 미리보기·문법 창을 열면 작업 영역 폭을 넘는 폭.
+    // macOS는 이 창이 넓어져 작업 영역을 꽉 채우면 사용자가 최대화하지 않았어도 isMaximized()가 true다.
+    const { area, contentWidth } = await app.evaluate(({ BrowserWindow, screen }) => {
+      const window = BrowserWindow.getAllWindows()[0]
+      const area = screen.getDisplayMatching(window.getBounds()).workArea
+      window.setBounds({ x: area.x, y: area.y, width: area.width - 150, height: area.height })
+      return { area, contentWidth: window.getContentSize()[0] }
+    })
+    test.skip(contentWidth <= 760, `화면 작업 영역 ${area.width}px이 너무 좁아 문법 창이 열리는 창 폭을 만들 수 없다`)
+    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(contentWidth)
+    const before = (await windowState()).bounds
+    const filled = { ...before, x: area.x, width: area.width }
+
+    const preview = page.locator('#toggle-preview')
+    const syntax = page.locator('#toggle-syntax')
+    const expectFilled = async () => {
+      await expect.poll(async () => (await windowState()).bounds).toEqual(filled)
+      if (isMac) expect((await windowState()).maximized).toBe(true)
+    }
+    const expectRestored = () => expect.poll(async () => (await windowState()).bounds).toEqual(before)
+
+    // PDF 미리보기만
+    await preview.click()
+    await expect(preview).toHaveText('<')
+    await expectFilled()
+    await preview.click()
+    await expect(preview).toHaveText('>')
+    await expectRestored()
+
+    // 문법 창만
+    await syntax.click()
+    await expect(syntax).toHaveText('>')
+    await expectFilled()
+    await syntax.click()
+    await expect(syntax).toHaveText('<')
+    await expectRestored()
+
+    // 둘 다 열고, 연 순서대로 닫기 / 반대 순서로 닫기
+    for (const order of [[preview, syntax], [syntax, preview]]) {
+      await preview.click()
+      await expect(preview).toHaveText('<')
+      await syntax.click()
+      await expect(syntax).toHaveText('>')
+      await expectFilled()
+      for (const button of order) await button.click()
+      await expect(preview).toHaveText('>')
+      await expect(syntax).toHaveText('<')
+      await expectRestored()
+    }
+
+    // 앱이 넓혀 꽉 찬 크기를 기억한 채로 사용자가 창을 줄였다가 최대화하면, macOS에선 기억한 크기와 최대화한 크기가 같다.
+    // 그래도 사용자가 최대화한 창이므로 패널을 닫아도 줄이지 않는다.
+    await preview.click()
+    await expect(preview).toHaveText('<')
+    await expectFilled()
+    await app.evaluate(({ BrowserWindow }, bounds) => BrowserWindow.getAllWindows()[0].setBounds(bounds), before)
+    await expect.poll(async () => (await windowState()).bounds).toEqual(before)
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].maximize())
+    await expect.poll(async () => (await windowState()).maximized).toBe(true)
+    const maximized = (await windowState()).bounds
+    if (isMac) expect(maximized).toEqual(filled)
+    await preview.click()
+    await expect(preview).toHaveText('>')
+    await page.waitForTimeout(300)
+    expect(await windowState()).toEqual({ bounds: maximized, maximized: true })
+
+    // 사용자가 최대화한 창은 다시 열고 닫아도 크기를 건드리지 않는다.
+    await preview.click()
+    await expect(preview).toHaveText('<')
+    await syntax.click()
+    await expect(syntax).toHaveText('>')
+    await page.waitForTimeout(300)
+    expect(await windowState()).toEqual({ bounds: maximized, maximized: true })
+    await syntax.click()
+    await expect(syntax).toHaveText('<')
+    await preview.click()
+    await expect(preview).toHaveText('>')
+    await page.waitForTimeout(300)
+    expect(await windowState()).toEqual({ bounds: maximized, maximized: true })
+    expect(errors).toEqual([])
+  } finally {
+    await app.close()
+  }
+})
+
 test('좁은 창에서는 문법 창을 열지 않고 열림 상태와 창 폭도 그대로 둔다', async () => {
   const { app, page, errors } = await launch()
   try {

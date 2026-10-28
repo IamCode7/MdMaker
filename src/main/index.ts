@@ -13,7 +13,8 @@ import {
   protocol,
   screen,
   shell,
-  type MenuItemConstructorOptions
+  type MenuItemConstructorOptions,
+  type Rectangle
 } from 'electron'
 import type { CloseChoice, MenuCommand, OpenedFile } from '../shared/api'
 import { menuAccelerators } from '../shared/shortcuts'
@@ -28,6 +29,8 @@ let allowClose = false
 let quitting = false
 let rendererReady = false
 const pendingPaths: string[] = []
+/** PDF 미리보기·문법 창 때문에 앱이 마지막으로 맞춘 창 크기. 사용자가 최대화하면 지운다. */
+let appSizedBounds: Rectangle | null = null
 
 // 자동 테스트가 실제 앱 설정(미리보기 폭 등)을 건드리지 않게 따로 저장한다.
 if (testDir) app.setPath('userData', join(testDir, 'user-data'))
@@ -161,6 +164,7 @@ function createWindow(): void {
   rendererReady = false
   allowClose = false
   windowEdited = false
+  appSizedBounds = null
   const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize
   const window = new BrowserWindow({
     width: Math.min(900, screenWidth),
@@ -200,6 +204,10 @@ function createWindow(): void {
   window.on('closed', () => {
     if (mainWindow === window) mainWindow = null
   })
+  // 사용자가 직접 최대화(macOS는 확대)하면, 같은 크기라도 앱이 맞춘 창으로 보지 않는다.
+  window.on('maximize', () => {
+    appSizedBounds = null
+  })
 
   if (process.env.ELECTRON_RENDERER_URL) {
     void window.loadURL(process.env.ELECTRON_RENDERER_URL)
@@ -207,6 +215,9 @@ function createWindow(): void {
     void window.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
+
+/** 창을 다른 모니터로 옮겨도 앱이 맞춘 창으로 알아보도록 위치는 빼고 크기만 비교한다. */
+const isSameSize = (a: Rectangle, b: Rectangle | null): boolean => b !== null && a.width === b.width && a.height === b.height
 
 function registerIPC(): void {
   ipcMain.handle('open-dialog', async (): Promise<OpenedFile[]> => {
@@ -300,14 +311,18 @@ function registerIPC(): void {
     if (isMac) mainWindow?.setDocumentEdited(edited)
   })
 
-  // PDF 미리보기를 열면 그 폭만큼 창을 오른쪽으로 넓히고, 닫으면 되돌린다.
+  // PDF 미리보기·문법 창을 열면 그 폭만큼 창을 오른쪽으로 넓히고, 닫으면 되돌린다.
+  // 사용자가 최대화하거나 전체 화면으로 바꾼 창은 건드리지 않는다.
+  // macOS는 창이 작업 영역을 꽉 채우기만 해도 최대화로 치므로, 앱이 넓혀서 꽉 찬 창은 최대화로 보지 않는다.
   ipcMain.handle('resize-window-by', (_event, delta: number) => {
-    if (!mainWindow || mainWindow.isMaximized() || mainWindow.isFullScreen()) return 0
+    if (!mainWindow || mainWindow.isFullScreen()) return 0
     const bounds = mainWindow.getBounds()
+    if (mainWindow.isMaximized() && !isSameSize(bounds, appSizedBounds)) return 0
     const area = screen.getDisplayMatching(bounds).workArea
     const width = Math.min(Math.max(bounds.width + delta, 480), area.width)
     const x = Math.max(area.x, Math.min(bounds.x, area.x + area.width - width))
     mainWindow.setBounds({ ...bounds, x, width }, true)
+    appSizedBounds = mainWindow.getBounds()
     return width - bounds.width
   })
 
